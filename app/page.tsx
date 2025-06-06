@@ -8,12 +8,30 @@ import { DisplaySettingsManager } from "@/components/super-admin/display-setting
 import { DisplayManagement } from "@/components/super-admin/display-management"
 import { UserManagement } from "@/components/super-admin/user-management"
 import { DriverManagement } from "@/components/super-admin/driver-management"
+import { DataScheduler } from "@/components/data-management/data-scheduler"
+import { NewsManagement } from "@/components/data-management/news-management"
+import { JobsManagement } from "@/components/data-management/jobs-management"
+import { PlaylistManager } from "@/components/data-management/playlist-manager"
 import { AnalyticsDashboard } from "@/components/sub-admin/analytics-dashboard"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { signOut } from "firebase/auth"
 import { auth } from "@/lib/firebase"
-import { LogOut, Settings, BarChart3, Monitor, Users, Video, Car, Tv, AlertTriangle } from "lucide-react"
+import {
+  LogOut,
+  Settings,
+  BarChart3,
+  Monitor,
+  Users,
+  Video,
+  Car,
+  Tv,
+  AlertTriangle,
+  Database,
+  Newspaper,
+  Briefcase,
+  ListOrdered,
+} from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
@@ -145,8 +163,12 @@ export default function SuperAdminDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px:6 lg:px-8 py-8">
-        <Tabs defaultValue="ads" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-7">
+        <Tabs defaultValue="playlist" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-11">
+            <TabsTrigger value="playlist" className="flex items-center gap-2">
+              <ListOrdered className="w-4 h-4" />
+              Playlist
+            </TabsTrigger>
             <TabsTrigger value="ads" className="flex items-center gap-2">
               <Video className="w-4 h-4" />
               Ads
@@ -163,6 +185,18 @@ export default function SuperAdminDashboard() {
               <Car className="w-4 h-4" />
               Drivers
             </TabsTrigger>
+            <TabsTrigger value="data-scheduler" className="flex items-center gap-2">
+              <Database className="w-4 h-4" />
+              Data
+            </TabsTrigger>
+            <TabsTrigger value="news" className="flex items-center gap-2">
+              <Newspaper className="w-4 h-4" />
+              News
+            </TabsTrigger>
+            <TabsTrigger value="jobs" className="flex items-center gap-2">
+              <Briefcase className="w-4 h-4" />
+              Jobs
+            </TabsTrigger>
             <TabsTrigger value="settings" className="flex items-center gap-2">
               <Settings className="w-4 h-4" />
               Settings
@@ -176,6 +210,10 @@ export default function SuperAdminDashboard() {
               Analytics
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="playlist">
+            <PlaylistManager />
+          </TabsContent>
 
           <TabsContent value="ads">
             <AdManagement />
@@ -191,6 +229,18 @@ export default function SuperAdminDashboard() {
 
           <TabsContent value="drivers">
             <DriverManagement />
+          </TabsContent>
+
+          <TabsContent value="data-scheduler">
+            <DataScheduler />
+          </TabsContent>
+
+          <TabsContent value="news">
+            <NewsManagement />
+          </TabsContent>
+
+          <TabsContent value="jobs">
+            <JobsManagement />
           </TabsContent>
 
           <TabsContent value="settings">

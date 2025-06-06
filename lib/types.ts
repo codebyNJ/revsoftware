@@ -39,12 +39,32 @@ export interface Display {
   updatedBy?: string
 }
 
+export interface DriverSession {
+  id: string
+  driverId: string
+  driverName: string
+  phoneNumber: string
+  displayId: string
+  displayName: string
+  startTime: Date
+  lastSeen: Date
+  endTime?: Date
+  isActive: boolean
+  location?: {
+    latitude: number
+    longitude: number
+    address: string
+    accuracy: number
+  }
+}
+
 export interface Ad {
   id: string
   title: string
   description: string
   videoUrl: string // Direct video URL
   thumbnailUrl?: string
+  readMoreUrl?: string // URL for the "Read More" QR code
   duration: number // in seconds
   ownerId: string
   ownerEmail: string
@@ -69,7 +89,7 @@ export interface Analytics {
   clicks: number
   date: string // YYYY-MM-DD format
   displayId?: string // Which display this came from
-  driverId?: string // Which driver was operating
+  driverId: string // Which driver was operating (not optional anymore)
   geolocation?: {
     accuracy: number
     address: string

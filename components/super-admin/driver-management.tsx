@@ -34,6 +34,14 @@ import { Plus, Edit, Trash2, Users, Car } from "lucide-react"
 import { useAuth } from "@/hooks/use-auth"
 import { useToast } from "@/hooks/use-toast"
 
+const formatPhoneNumber = (phone: string) => {
+  const cleaned = phone.replace(/\D/g, "")
+  if (cleaned.length === 10) {
+    return `${cleaned.substring(0, 3)}-${cleaned.substring(3, 6)}-${cleaned.substring(6)}`
+  }
+  return phone
+}
+
 export function DriverManagement() {
   const { user } = useAuth()
   const { toast } = useToast()
@@ -43,7 +51,7 @@ export function DriverManagement() {
   const [formData, setFormData] = useState({
     name: "",
     email: "",
-    phone: "",
+    phone: "", // Add this line
     licenseNumber: "",
     vehicleInfo: {
       make: "",
@@ -75,7 +83,7 @@ export function DriverManagement() {
       const driverData = {
         name: formData.name,
         email: formData.email,
-        phone: formData.phone,
+        phone: formData.phone.replace(/\D/g, ""), // Store cleaned phone number
         licenseNumber: formData.licenseNumber,
         vehicleInfo: {
           make: formData.vehicleInfo.make,
@@ -98,7 +106,7 @@ export function DriverManagement() {
         await updateDoc(doc(db, "drivers", editingDriver.id), {
           name: formData.name,
           email: formData.email,
-          phone: formData.phone,
+          phone: formData.phone.replace(/\D/g, ""),
           licenseNumber: formData.licenseNumber,
           vehicleInfo: formData.vehicleInfo,
           status: formData.status,
@@ -201,10 +209,17 @@ export function DriverManagement() {
 
   const openEditDialog = (driver: Driver) => {
     setEditingDriver(driver)
+
+    // Format phone number for display
+    let formattedPhone = driver.phone || ""
+    if (formattedPhone.length === 10) {
+      formattedPhone = `${formattedPhone.substring(0, 3)}-${formattedPhone.substring(3, 6)}-${formattedPhone.substring(6)}`
+    }
+
     setFormData({
       name: driver.name,
       email: driver.email,
-      phone: driver.phone,
+      phone: formattedPhone,
       licenseNumber: driver.licenseNumber,
       vehicleInfo: driver.vehicleInfo,
       status: driver.status,
@@ -277,9 +292,24 @@ export function DriverManagement() {
                   id="phone"
                   type="tel"
                   value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  onChange={(e) => {
+                    // Format phone number as user types
+                    const cleaned = e.target.value.replace(/\D/g, "")
+                    const trimmed = cleaned.substring(0, 10)
+                    let formatted = trimmed
+
+                    if (trimmed.length > 6) {
+                      formatted = `${trimmed.substring(0, 3)}-${trimmed.substring(3, 6)}-${trimmed.substring(6)}`
+                    } else if (trimmed.length > 3) {
+                      formatted = `${trimmed.substring(0, 3)}-${trimmed.substring(3)}`
+                    }
+
+                    setFormData({ ...formData, phone: formatted })
+                  }}
+                  placeholder="XXX-XXX-XXXX"
                   required
                 />
+                <p className="text-xs text-muted-foreground">Format: XXX-XXX-XXXX (used for display login)</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="license">License Number</Label>
@@ -438,7 +468,9 @@ export function DriverManagement() {
                 <div className="space-y-2">
                   <h4 className="font-semibold text-sm">Contact Information</h4>
                   <p className="text-sm text-gray-600">📧 {driver.email}</p>
-                  <p className="text-sm text-gray-600">📱 {driver.phone}</p>
+                  <p className="text-sm text-gray-600">
+                    📱 {driver.phone ? formatPhoneNumber(driver.phone) : "No phone"}
+                  </p>
                   <p className="text-sm text-gray-600">🆔 License: {driver.licenseNumber}</p>
                 </div>
                 <div className="space-y-2">

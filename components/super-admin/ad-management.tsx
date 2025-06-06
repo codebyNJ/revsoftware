@@ -33,7 +33,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd"
-import { Plus, Edit, Trash2, GripVertical, Monitor, Car, Hash } from "lucide-react"
+import { Plus, Edit, Trash2, GripVertical, Monitor, Car, Hash, Link } from "lucide-react"
 import { useAuth } from "@/hooks/use-auth"
 import { useToast } from "@/hooks/use-toast"
 
@@ -51,6 +51,7 @@ export function AdManagement() {
     description: "",
     videoUrl: "",
     thumbnailUrl: "",
+    readMoreUrl: "", // Added readMoreUrl field
     duration: 0,
     status: "active" as const,
     assignedToUserId: "none",
@@ -116,6 +117,11 @@ export function AdManagement() {
         updatedAt: doc.data().updatedAt?.toDate(),
         scheduledStart: doc.data().scheduledStart?.toDate(),
         scheduledEnd: doc.data().scheduledEnd?.toDate(),
+        // Ensure these fields exist
+        assignedDisplays: doc.data().assignedDisplays || [],
+        assignedDrivers: doc.data().assignedDrivers || [],
+        displayAll: doc.data().displayAll !== false,
+        assignAllDrivers: doc.data().assignAllDrivers !== false,
       })) as Ad[]
       setAds(adsData)
     })
@@ -201,6 +207,7 @@ export function AdManagement() {
         description: formData.description,
         videoUrl: formData.videoUrl,
         thumbnailUrl: formData.thumbnailUrl,
+        readMoreUrl: formData.readMoreUrl, // Include readMoreUrl in the data
         duration: formData.duration,
         status: formData.status,
         ownerId: formData.assignedToUserId !== "none" ? formData.assignedToUserId : user.id,
@@ -246,6 +253,7 @@ export function AdManagement() {
         description: "",
         videoUrl: "",
         thumbnailUrl: "",
+        readMoreUrl: "",
         duration: 0,
         status: "active",
         assignedToUserId: "none",
@@ -316,6 +324,7 @@ export function AdManagement() {
       description: ad.description,
       videoUrl: ad.videoUrl,
       thumbnailUrl: ad.thumbnailUrl || "",
+      readMoreUrl: ad.readMoreUrl || "https://example.com/learn-more", // Add test URL if none exists
       duration: ad.duration,
       status: ad.status,
       assignedToUserId: ad.ownerId || "none",
@@ -373,6 +382,7 @@ export function AdManagement() {
                   description: "",
                   videoUrl: "",
                   thumbnailUrl: "",
+                  readMoreUrl: "",
                   duration: 0,
                   status: "active",
                   assignedToUserId: "none",
@@ -446,6 +456,23 @@ export function AdManagement() {
                   onChange={(e) => setFormData({ ...formData, thumbnailUrl: e.target.value })}
                   placeholder="https://example.com/thumbnail.jpg"
                 />
+              </div>
+
+              {/* New Read More URL field */}
+              <div className="space-y-2">
+                <Label htmlFor="readMoreUrl" className="flex items-center gap-1">
+                  <Link className="w-4 h-4" />
+                  Read More URL (for QR Code)
+                </Label>
+                <Input
+                  id="readMoreUrl"
+                  value={formData.readMoreUrl}
+                  onChange={(e) => setFormData({ ...formData, readMoreUrl: e.target.value })}
+                  placeholder="https://example.com/learn-more"
+                />
+                <p className="text-xs text-muted-foreground">
+                  This URL will be shown as a QR code when viewers click "Read More"
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -639,15 +666,21 @@ export function AdManagement() {
                               <Hash className="w-3 h-3" />
                               Play Order: {index + 1}
                             </span>
+                            {ad.readMoreUrl && (
+                              <span className="flex items-center gap-1">
+                                <Link className="w-3 h-3" />
+                                Read More URL: {ad.readMoreUrl.substring(0, 20)}...
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center gap-4 mt-1 text-xs text-gray-400">
                             <span className="flex items-center gap-1">
                               <Monitor className="w-3 h-3" />
-                              Displays: {(ad as any).displayAll ? "All" : (ad as any).assignedDisplays?.length || 0}
+                              Displays: {ad.displayAll ? "All" : ad.assignedDisplays?.length || 0}
                             </span>
                             <span className="flex items-center gap-1">
                               <Car className="w-3 h-3" />
-                              Drivers: {(ad as any).assignAllDrivers ? "All" : (ad as any).assignedDrivers?.length || 0}
+                              Drivers: {ad.assignAllDrivers ? "All" : ad.assignedDrivers?.length || 0}
                             </span>
                           </div>
                         </div>

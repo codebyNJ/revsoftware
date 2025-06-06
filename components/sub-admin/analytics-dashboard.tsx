@@ -154,11 +154,16 @@ export function AnalyticsDashboard() {
               date: dateString,
               impressions,
               hourlyData,
+              // Add timestamp for better sorting
+              timestamp: data.timestamp?.toDate() || data.createdAt?.toDate() || new Date(),
             }
           }) as Analytics[]
 
+          // Sort by timestamp for better chronological order
+          analyticsData.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+
           console.log("Loaded analytics:", analyticsData.length)
-          console.log("Analytics data:", analyticsData)
+          console.log("Sample analytics data:", analyticsData[0])
           setAnalytics(analyticsData)
         },
         (error) => {
@@ -297,9 +302,36 @@ export function AnalyticsDashboard() {
               <p>
                 <strong>Sample Analytics:</strong>
               </p>
-              <pre className="text-xs bg-white p-2 rounded mt-1 overflow-auto">
-                {JSON.stringify(analytics[0], null, 2)}
+              <pre className="text-xs bg-white p-2 rounded mt-1 overflow-auto max-h-40">
+                {JSON.stringify(
+                  {
+                    ...analytics[0],
+                    timestamp: analytics[0].timestamp?.toISOString(),
+                  },
+                  null,
+                  2,
+                )}
               </pre>
+              <p className="text-xs mt-1">
+                <strong>Recent Analytics Count by Date:</strong>
+              </p>
+              <div className="text-xs">
+                {Object.entries(
+                  analytics.reduce(
+                    (acc, item) => {
+                      acc[item.date] = (acc[item.date] || 0) + 1
+                      return acc
+                    },
+                    {} as Record<string, number>,
+                  ),
+                )
+                  .slice(0, 5)
+                  .map(([date, count]) => (
+                    <div key={date}>
+                      {date}: {count} entries
+                    </div>
+                  ))}
+              </div>
             </div>
           )}
         </CardContent>

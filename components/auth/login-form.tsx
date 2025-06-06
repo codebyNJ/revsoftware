@@ -1,10 +1,9 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { signInWithEmailAndPassword } from "firebase/auth"
-import { auth } from "@/lib/firebase"
+import { auth, db } from "@/lib/firebase"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,9 +11,9 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
 import { doc, getDoc } from "firebase/firestore"
-import { db } from "@/lib/firebase"
 import { useRouter } from "next/navigation"
-import { Home } from "lucide-react"
+import { Home, RefreshCw, AlertTriangle } from "lucide-react"
+import { useFirebase } from "@/components/firebase-provider"
 
 interface LoginFormProps {
   authError?: string | null
@@ -27,16 +26,22 @@ export function LoginForm({ authError }: LoginFormProps) {
   const [loading, setLoading] = useState(false)
   const { toast } = useToast()
   const router = useRouter()
+  const { initialized, error: firebaseError, retry } = useFirebase()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (!initialized) {
+      setError("Authentication system is not ready. Please wait or try refreshing.")
+      return
+    }
+
     setLoading(true)
     setError("")
 
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password)
 
-      // Add this after the successful signInWithEmailAndPassword call and before the toast
       // Get user data to determine redirect
       const userDoc = await getDoc(doc(db, "users", userCredential.user.uid))
       if (userDoc.exists()) {
@@ -61,7 +66,9 @@ export function LoginForm({ authError }: LoginFormProps) {
               ? "Please enter a valid email address."
               : error.code === "auth/too-many-requests"
                 ? "Too many failed attempts. Please try again later."
-                : "Failed to sign in. Please check your credentials."
+                : error.code === "auth/network-request-failed"
+                  ? "Network error. Please check your connection."
+                  : "Failed to sign in. Please check your credentials."
 
       setError(errorMessage)
       toast({
@@ -78,6 +85,56 @@ export function LoginForm({ authError }: LoginFormProps) {
     router.push("/super")
   }
 
+  // Show Firebase initialization error
+  if (firebaseError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-500" />
+              Firebase Error
+            </CardTitle>
+            <CardDescription>Failed to initialize Firebase services</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Alert variant="destructive">
+              <AlertDescription>{firebaseError}</AlertDescription>
+            </Alert>
+            <div className="space-y-2">
+              <Button onClick={retry} className="w-full">
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Retry Initialization
+              </Button>
+              <Button variant="outline" onClick={() => window.location.reload()} className="w-full">
+                Refresh Page
+              </Button>
+              <Button variant="outline" onClick={goToSuperPage} className="w-full">
+                <Home className="w-4 h-4 mr-2" />
+                Go to Super Page
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // Show loading state while Firebase initializes
+  if (!initialized) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Card className="w-full max-w-md">
+          <CardContent className="flex flex-col items-center justify-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mb-4"></div>
+            <p className="text-gray-600">Initializing Firebase services...</p>
+            <p className="text-sm text-gray-500 mt-2">This may take a few moments</p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <Card className="w-full max-w-md">
@@ -89,7 +146,14 @@ export function LoginForm({ authError }: LoginFormProps) {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                disabled={loading}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
@@ -99,6 +163,7 @@ export function LoginForm({ authError }: LoginFormProps) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                disabled={loading}
               />
             </div>
             {(error || authError) && (
@@ -109,7 +174,7 @@ export function LoginForm({ authError }: LoginFormProps) {
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Signing in..." : "Sign In"}
             </Button>
-            <Button type="button" variant="outline" className="w-full" onClick={goToSuperPage}>
+            <Button type="button" variant="outline" className="w-full" onClick={goToSuperPage} disabled={loading}>
               <Home className="w-4 h-4 mr-2" />
               Go to Super Page
             </Button>
