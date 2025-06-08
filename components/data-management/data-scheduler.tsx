@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import { DataFetchService } from "@/lib/api-services"
 import { DataStorageService } from "@/lib/data-storage"
-import { Clock, Download, Database, Wifi, WifiOff } from "lucide-react"
+import { Clock, Download, Database, Wifi, WifiOff, RefreshCw, Newspaper, Briefcase, Cloud } from "lucide-react"
 
 export function DataScheduler() {
   const [isRunning, setIsRunning] = useState(false)
@@ -23,6 +23,16 @@ export function DataScheduler() {
     news: false,
     jobs: false,
     weather: false,
+  })
+  const [individualFetching, setIndividualFetching] = useState({
+    news: false,
+    jobs: false,
+    weather: false,
+  })
+  const [lastIndividualFetch, setLastIndividualFetch] = useState({
+    news: null as Date | null,
+    jobs: null as Date | null,
+    weather: null as Date | null,
   })
 
   const { toast } = useToast()
@@ -55,7 +65,7 @@ export function DataScheduler() {
     return next6AM
   }
 
-  // Manual fetch function
+  // Manual fetch function for all data
   const fetchDataNow = async () => {
     setIsRunning(true)
     setStatus("fetching")
@@ -102,6 +112,78 @@ export function DataScheduler() {
     }
   }
 
+  // Individual fetch functions
+  const fetchNewsData = async () => {
+    setIndividualFetching((prev) => ({ ...prev, news: true }))
+    try {
+      const news = await dataFetcher.fetchNews()
+      await dataStorage.storeNews(news)
+      setLastIndividualFetch((prev) => ({ ...prev, news: new Date() }))
+      setStats((prev) => ({ ...prev, news: news.length }))
+      toast({
+        title: "News Fetch Complete",
+        description: `Fetched ${news.length} news articles.`,
+      })
+    } catch (error) {
+      console.error("Error fetching news:", error)
+      toast({
+        title: "News Fetch Failed",
+        description: "Failed to fetch news data.",
+        variant: "destructive",
+      })
+    } finally {
+      setIndividualFetching((prev) => ({ ...prev, news: false }))
+    }
+  }
+
+  const fetchJobsData = async () => {
+    setIndividualFetching((prev) => ({ ...prev, jobs: true }))
+    try {
+      const jobs = await dataFetcher.fetchJobs()
+      await dataStorage.storeJobs(jobs)
+      setLastIndividualFetch((prev) => ({ ...prev, jobs: new Date() }))
+      setStats((prev) => ({ ...prev, jobs: jobs.length }))
+      toast({
+        title: "Jobs Fetch Complete",
+        description: `Fetched ${jobs.length} job listings.`,
+      })
+    } catch (error) {
+      console.error("Error fetching jobs:", error)
+      toast({
+        title: "Jobs Fetch Failed",
+        description: "Failed to fetch jobs data.",
+        variant: "destructive",
+      })
+    } finally {
+      setIndividualFetching((prev) => ({ ...prev, jobs: false }))
+    }
+  }
+
+  const fetchWeatherData = async () => {
+    setIndividualFetching((prev) => ({ ...prev, weather: true }))
+    try {
+      const weather = await dataFetcher.fetchWeather()
+      if (weather) {
+        await dataStorage.storeWeather(weather)
+        setLastIndividualFetch((prev) => ({ ...prev, weather: new Date() }))
+        setStats((prev) => ({ ...prev, weather: 1 }))
+        toast({
+          title: "Weather Fetch Complete",
+          description: "Weather data updated successfully.",
+        })
+      }
+    } catch (error) {
+      console.error("Error fetching weather:", error)
+      toast({
+        title: "Weather Fetch Failed",
+        description: "Failed to fetch weather data.",
+        variant: "destructive",
+      })
+    } finally {
+      setIndividualFetching((prev) => ({ ...prev, weather: false }))
+    }
+  }
+
   // Set up automatic scheduling
   useEffect(() => {
     const checkSchedule = () => {
@@ -130,14 +212,37 @@ export function DataScheduler() {
     if (stored) {
       setLastFetch(new Date(stored))
     }
+
+    // Load individual fetch times
+    const newsStored = localStorage.getItem("lastNewsFetch")
+    const jobsStored = localStorage.getItem("lastJobsFetch")
+    const weatherStored = localStorage.getItem("lastWeatherFetch")
+
+    setLastIndividualFetch({
+      news: newsStored ? new Date(newsStored) : null,
+      jobs: jobsStored ? new Date(jobsStored) : null,
+      weather: weatherStored ? new Date(weatherStored) : null,
+    })
   }, [])
 
-  // Save last fetch time
+  // Save last fetch times
   useEffect(() => {
     if (lastFetch) {
       localStorage.setItem("lastDataFetch", lastFetch.toISOString())
     }
   }, [lastFetch])
+
+  useEffect(() => {
+    if (lastIndividualFetch.news) {
+      localStorage.setItem("lastNewsFetch", lastIndividualFetch.news.toISOString())
+    }
+    if (lastIndividualFetch.jobs) {
+      localStorage.setItem("lastJobsFetch", lastIndividualFetch.jobs.toISOString())
+    }
+    if (lastIndividualFetch.weather) {
+      localStorage.setItem("lastWeatherFetch", lastIndividualFetch.weather.toISOString())
+    }
+  }, [lastIndividualFetch])
 
   return (
     <div className="space-y-6">
@@ -184,6 +289,105 @@ export function DataScheduler() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Manual Data Fetch Controls */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <RefreshCw className="w-5 h-5" />
+            Manual Data Fetch
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Manually fetch the latest data from external APIs when needed.
+          </p>
+
+          {/* Individual Fetch Controls */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="border-blue-200">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Newspaper className="w-4 h-4" />
+                  News Data
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Button onClick={fetchNewsData} disabled={individualFetching.news} size="sm" className="w-full">
+                  {individualFetching.news ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Fetching...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Fetch News
+                    </>
+                  )}
+                </Button>
+                {lastIndividualFetch.news && (
+                  <p className="text-xs text-muted-foreground">Last: {lastIndividualFetch.news.toLocaleString()}</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="border-green-200">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Briefcase className="w-4 h-4" />
+                  Jobs Data
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Button onClick={fetchJobsData} disabled={individualFetching.jobs} size="sm" className="w-full">
+                  {individualFetching.jobs ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Fetching...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Fetch Jobs
+                    </>
+                  )}
+                </Button>
+                {lastIndividualFetch.jobs && (
+                  <p className="text-xs text-muted-foreground">Last: {lastIndividualFetch.jobs.toLocaleString()}</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="border-orange-200">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Cloud className="w-4 h-4" />
+                  Weather Data
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Button onClick={fetchWeatherData} disabled={individualFetching.weather} size="sm" className="w-full">
+                  {individualFetching.weather ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Fetching...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Fetch Weather
+                    </>
+                  )}
+                </Button>
+                {lastIndividualFetch.weather && (
+                  <p className="text-xs text-muted-foreground">Last: {lastIndividualFetch.weather.toLocaleString()}</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
@@ -272,7 +476,7 @@ export function DataScheduler() {
 
           <Button onClick={fetchDataNow} disabled={isRunning} className="w-full">
             <Download className="w-4 h-4 mr-2" />
-            {isRunning ? "Fetching Data..." : "Fetch Data Now"}
+            {isRunning ? "Fetching All Data..." : "Fetch All Data Now"}
           </Button>
         </CardContent>
       </Card>

@@ -3,7 +3,7 @@
 import { useAuth } from "@/hooks/use-auth"
 import { LoginForm } from "@/components/auth/login-form"
 import { AdManagement } from "@/components/super-admin/ad-management"
-import { DisplayPreview } from "@/components/super-admin/display-preview"
+import { MovementTracker } from "@/components/super-admin/movement-tracker"
 import { DisplaySettingsManager } from "@/components/super-admin/display-settings"
 import { DisplayManagement } from "@/components/super-admin/display-management"
 import { UserManagement } from "@/components/super-admin/user-management"
@@ -21,7 +21,7 @@ import {
   LogOut,
   Settings,
   BarChart3,
-  Monitor,
+  Navigation,
   Users,
   Video,
   Car,
@@ -60,10 +60,6 @@ export default function SuperAdminDashboard() {
 
   const openDisplayPage = () => {
     window.open("/display", "_blank")
-  }
-
-  const goToSuperPage = () => {
-    router.push("/super")
   }
 
   useEffect(() => {
@@ -145,12 +141,8 @@ export default function SuperAdminDashboard() {
               </p>
             </div>
             <div className="flex items-center gap-4">
-              <Button variant="outline" onClick={goToSuperPage}>
-                <Monitor className="w-4 h-4 mr-2" />
-                Super Page
-              </Button>
               <Button variant="outline" onClick={openDisplayPage}>
-                <Monitor className="w-4 h-4 mr-2" />
+                <Tv className="w-4 h-4 mr-2" />
                 Open Display
               </Button>
               <Button variant="outline" onClick={handleSignOut}>
@@ -162,7 +154,14 @@ export default function SuperAdminDashboard() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px:6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-6">
+          <h2 className="text-3xl font-bold text-gray-900">Dashboard Overview</h2>
+          <p className="text-gray-600 mt-2">
+            Manage your ad campaigns, displays, and track real-time movement from one central location.
+          </p>
+        </div>
+
         <Tabs defaultValue="playlist" className="space-y-6">
           <TabsList className="grid w-full grid-cols-11">
             <TabsTrigger value="playlist" className="flex items-center gap-2">
@@ -201,9 +200,9 @@ export default function SuperAdminDashboard() {
               <Settings className="w-4 h-4" />
               Settings
             </TabsTrigger>
-            <TabsTrigger value="preview" className="flex items-center gap-2">
-              <Monitor className="w-4 h-4" />
-              Preview
+            <TabsTrigger value="tracking" className="flex items-center gap-2">
+              <Navigation className="w-4 h-4" />
+              Tracking
             </TabsTrigger>
             <TabsTrigger value="analytics" className="flex items-center gap-2">
               <BarChart3 className="w-4 h-4" />
@@ -247,8 +246,8 @@ export default function SuperAdminDashboard() {
             <DisplaySettingsManager />
           </TabsContent>
 
-          <TabsContent value="preview">
-            <DisplayPreview />
+          <TabsContent value="tracking">
+            <MovementTracker />
           </TabsContent>
 
           <TabsContent value="analytics">

@@ -10,6 +10,8 @@ import { DataStorageService } from "@/lib/data-storage"
 import { Briefcase, Search, Eye, EyeOff, MapPin, Building, DollarSign, Clock, QrCode, Trash2 } from "lucide-react"
 import type { JobItem } from "@/lib/api-services"
 import { useToast } from "@/hooks/use-toast"
+import { deleteDoc, doc } from "firebase/firestore"
+import { db } from "@/lib/firebase"
 
 export function JobsManagement() {
   const [jobs, setJobs] = useState<(JobItem & { createdAt: Date; isActive: boolean })[]>([])
@@ -75,15 +77,14 @@ export function JobsManagement() {
     setDeletingItems((prev) => [...prev, jobId])
     try {
       console.log(`Attempting to delete job item: ${jobId}`)
-      await dataStorage.deleteJob(jobId)
+
+      // Use Firebase deleteDoc directly
+      await deleteDoc(doc(db, "jobs", jobId))
       console.log(`Successfully deleted job item: ${jobId}`)
 
       // Remove from local state immediately for better UX
       setJobs((prev) => prev.filter((item) => item.id !== jobId))
       setSelectedJobs((prev) => prev.filter((id) => id !== jobId))
-
-      // Reload to ensure consistency
-      await loadJobs()
 
       toast({
         title: "Job Deleted",
@@ -93,7 +94,7 @@ export function JobsManagement() {
       console.error("Error deleting job:", error)
       toast({
         title: "Delete Failed",
-        description: `Failed to delete job item: ${error.message}`,
+        description: `Failed to delete job item: ${error?.message || "Unknown error"}`,
         variant: "destructive",
       })
     } finally {
@@ -110,15 +111,16 @@ export function JobsManagement() {
 
     try {
       console.log(`Attempting to bulk delete ${selectedJobs.length} job items`)
-      await dataStorage.bulkDeleteJobs(selectedJobs)
+
+      // Use Firebase deleteDoc directly for each item
+      const deleteBatch = selectedJobs.map((id) => deleteDoc(doc(db, "jobs", id)))
+      await Promise.all(deleteBatch)
+
       console.log(`Successfully bulk deleted ${selectedJobs.length} job items`)
 
       // Remove from local state immediately
       setJobs((prev) => prev.filter((item) => !selectedJobs.includes(item.id)))
       setSelectedJobs([])
-
-      // Reload to ensure consistency
-      await loadJobs()
 
       toast({
         title: "Jobs Deleted",
@@ -128,7 +130,7 @@ export function JobsManagement() {
       console.error("Error bulk deleting jobs:", error)
       toast({
         title: "Delete Failed",
-        description: `Failed to delete job items: ${error.message}`,
+        description: `Failed to delete job items: ${error?.message || "Unknown error"}`,
         variant: "destructive",
       })
     }

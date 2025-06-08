@@ -1,5 +1,8 @@
 // Device monitoring utilities for display settings
 
+import { doc, onSnapshot, setDoc, updateDoc } from "firebase/firestore"
+import { db } from "./firebase"
+
 export interface DeviceInfo {
   batteryLevel: number
   batteryCharging: boolean
@@ -24,7 +27,13 @@ export class DeviceMonitor {
   private dataUsageStart = 0
   private callbacks: ((info: DeviceInfo) => void)[] = []
   private monitoringInterval: NodeJS.Timeout | null = null
+  private pingCheckInterval: NodeJS.Timeout | null = null
   private sessionStartTime: number
+  private displayId: string | null = null
+  private driverId: string | null = null
+  private unsubscribes: (() => void)[] = []
+  private lastStatusUpdate = 0
+  private statusUpdateDebounce = 30000 // 30 seconds minimum between updates
 
   static getInstance(): DeviceMonitor {
     if (!DeviceMonitor.instance) {
@@ -33,13 +42,30 @@ export class DeviceMonitor {
     return DeviceMonitor.instance
   }
 
-  constructor() {
+  constructor(displayId?: string) {
     this.sessionStartTime = Date.now()
+    if (displayId) {
+      this.displayId = displayId
+      this.startMonitoring()
+      this.listenForPingRequests()
+    }
   }
 
-  async initialize(): Promise<void> {
+  async initialize(displayId?: string, driverId?: string): Promise<void> {
     try {
       console.log("Initializing Device Monitor...")
+
+      if (displayId) this.displayId = displayId
+      if (driverId) this.driverId = driverId
+
+      // Try to get from localStorage if not provided
+      if (!this.displayId) {
+        this.displayId = localStorage.getItem("displayId")
+      }
+
+      if (!this.driverId) {
+        this.driverId = localStorage.getItem("driverId")
+      }
 
       // Initialize Battery API
       if ("getBattery" in navigator) {
@@ -80,6 +106,11 @@ export class DeviceMonitor {
       // Start monitoring
       this.startMonitoring()
 
+      // Start ping response system if we have a display ID
+      if (this.displayId) {
+        this.startPingResponseSystem()
+      }
+
       console.log("🚀 Device Monitor fully initialized")
     } catch (error) {
       console.error("❌ Device monitoring initialization failed:", error)
@@ -100,6 +131,77 @@ export class DeviceMonitor {
     // Initial update
     this.updateDeviceInfo()
     console.log("📊 Device monitoring started (30s intervals)")
+  }
+
+  private startPingResponseSystem(): void {
+    // Clear any existing interval
+    if (this.pingCheckInterval) {
+      clearInterval(this.pingCheckInterval)
+    }
+
+    if (!this.displayId) {
+      console.warn("Cannot start ping response system: No display ID")
+      return
+    }
+
+    // Import Firebase here to avoid circular dependencies
+    import("@/lib/firebase")
+      .then(({ db }) => {
+        const { collection, query, where, getDocs, updateDoc, doc, serverTimestamp } = require("firebase/firestore")
+
+        console.log("🔔 Starting ping response system for display:", this.displayId)
+
+        // Check for ping requests every 5 seconds
+        this.pingCheckInterval = setInterval(async () => {
+          try {
+            // Only check if we have a display ID
+            if (!this.displayId) return
+
+            // Get pending ping requests for this display
+            const pingRequestsQuery = query(
+              collection(db, "ping_requests"),
+              where("displayId", "==", this.displayId),
+              where("status", "==", "pending"),
+            )
+
+            const snapshot = await getDocs(pingRequestsQuery)
+
+            if (snapshot.empty) return
+
+            console.log(`📡 Found ${snapshot.size} pending ping requests`)
+
+            // Get current device info
+            const deviceInfo = await this.getDeviceInfo()
+
+            // Respond to each ping request
+            for (const pingDoc of snapshot.docs) {
+              console.log("🔄 Responding to ping request:", pingDoc.id)
+
+              try {
+                await updateDoc(doc(db, "ping_requests", pingDoc.id), {
+                  status: "completed",
+                  responseTimestamp: serverTimestamp(),
+                  batteryLevel: deviceInfo.batteryLevel,
+                  batteryCharging: deviceInfo.batteryCharging,
+                  networkType: deviceInfo.networkType,
+                  networkSpeed: deviceInfo.networkSpeed,
+                  isOnline: deviceInfo.isOnline,
+                  driverId: this.driverId || null,
+                })
+
+                console.log("✅ Ping response sent successfully")
+              } catch (error) {
+                console.error("❌ Failed to respond to ping:", error)
+              }
+            }
+          } catch (error) {
+            console.error("❌ Error checking for ping requests:", error)
+          }
+        }, 5000)
+      })
+      .catch((error) => {
+        console.error("Failed to import Firebase for ping system:", error)
+      })
   }
 
   private async updateDeviceInfo(): Promise<void> {
@@ -298,23 +400,124 @@ export class DeviceMonitor {
     }
   }
 
-  destroy(): void {
+  public destroy() {
     if (this.monitoringInterval) {
       clearInterval(this.monitoringInterval)
       this.monitoringInterval = null
     }
+
+    if (this.pingCheckInterval) {
+      clearInterval(this.pingCheckInterval)
+      this.pingCheckInterval = null
+    }
+
     this.callbacks = []
+
+    this.unsubscribes.forEach((unsubscribe) => unsubscribe())
+    this.unsubscribes = []
+
     console.log("🛑 Device Monitor destroyed")
+  }
+
+  private listenForPingRequests() {
+    if (!this.displayId) return
+
+    const unsubscribe = onSnapshot(doc(db, "ping_requests", `ping_${this.displayId}_*`), async (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data()
+        if (data.displayId === this.displayId && data.status === "pending") {
+          try {
+            const battery = await this.getBatteryInfo()
+
+            // Respond to ping
+            await setDoc(doc(db, "ping_responses", snapshot.id), {
+              displayId: this.displayId,
+              batteryLevel: battery.level,
+              isCharging: battery.charging,
+              timestamp: new Date(),
+              status: "success",
+            })
+          } catch (error) {
+            console.error("Failed to respond to ping:", error)
+          }
+        }
+      }
+    })
+
+    this.unsubscribes.push(unsubscribe)
+  }
+
+  private async getBatteryInfo(): Promise<{ level: number; charging: boolean }> {
+    try {
+      if ("getBattery" in navigator) {
+        const battery = await (navigator as any).getBattery()
+        return {
+          level: Math.round(battery.level * 100),
+          charging: battery.charging,
+        }
+      }
+    } catch (error) {
+      console.warn("Battery API not supported:", error)
+    }
+
+    // Fallback for testing
+    return {
+      level: Math.floor(Math.random() * 100),
+      charging: Math.random() > 0.5,
+    }
+  }
+
+  private startMonitoring() {
+    if (!this.displayId) return
+
+    // Update device status every 60 seconds (increased from 30)
+    const updateStatus = async () => {
+      try {
+        const now = Date.now()
+
+        // Debounce status updates to prevent rapid changes
+        if (now - this.lastStatusUpdate < this.statusUpdateDebounce) {
+          return
+        }
+
+        const battery = await this.getBatteryInfo()
+
+        // Only update if there's a significant change or it's been a while
+        await updateDoc(doc(db, "displays", this.displayId), {
+          status: "active", // Keep status consistent
+          isOnline: true,
+          lastSeen: new Date(),
+          batteryLevel: battery.level,
+          isCharging: battery.charging,
+          updatedAt: new Date(),
+        })
+
+        this.lastStatusUpdate = now
+        console.log("📊 Device status updated")
+      } catch (error) {
+        console.error("Failed to update device status:", error)
+      }
+    }
+
+    // Initial update after 5 seconds
+    setTimeout(updateStatus, 5000)
+
+    // Set up interval for every 60 seconds
+    const interval = setInterval(updateStatus, 60000)
+
+    // Cleanup function
+    this.unsubscribes.push(() => clearInterval(interval))
   }
 }
 
-// Kiosk mode utilities
+// Enhanced Kiosk mode utilities with better fullscreen support
 export class KioskManager {
   private static isKioskMode = false
   private static exitCode = ""
   private static keydownHandler: ((e: KeyboardEvent) => void) | null = null
   private static mouseMoveHandler: (() => void) | null = null
   private static cursorTimeout: NodeJS.Timeout | null = null
+  private static fullscreenChangeHandler: (() => void) | null = null
 
   static async enterKioskMode(): Promise<boolean> {
     try {
@@ -328,18 +531,23 @@ export class KioskManager {
       localStorage.setItem("kioskExitCode", this.exitCode)
       localStorage.setItem("kioskModeActive", "true")
 
-      // Request fullscreen
+      // Enhanced fullscreen request with better browser support
       const element = document.documentElement
       try {
+        // Try different fullscreen APIs
         if (element.requestFullscreen) {
-          await element.requestFullscreen()
+          await element.requestFullscreen({ navigationUI: "hide" })
         } else if ((element as any).webkitRequestFullscreen) {
-          await (element as any).webkitRequestFullscreen()
+          await (element as any).webkitRequestFullscreen(Element.ALLOW_KEYBOARD_INPUT)
         } else if ((element as any).msRequestFullscreen) {
           await (element as any).msRequestFullscreen()
         } else if ((element as any).mozRequestFullScreen) {
-          await (element as any).mozRequestFullScreen()
+          await (element as any).mozCancelFullScreen()
         }
+
+        // Listen for fullscreen changes
+        this.setupFullscreenListener()
+
         console.log("✅ Fullscreen activated")
       } catch (error) {
         console.warn("⚠️ Fullscreen request failed:", error)
@@ -357,6 +565,12 @@ export class KioskManager {
 
       // Hide scrollbars
       this.hideScrollbars()
+
+      // Prevent page zoom
+      this.preventZoom()
+
+      // Lock orientation if possible
+      this.lockOrientation()
 
       this.isKioskMode = true
       console.log("🎯 Kiosk mode activated successfully!")
@@ -403,6 +617,9 @@ export class KioskManager {
         this.enableContextMenu()
         this.showScrollbars()
         this.showCursor()
+        this.enableZoom()
+        this.unlockOrientation()
+        this.removeFullscreenListener()
 
         this.isKioskMode = false
         localStorage.removeItem("kioskExitCode")
@@ -430,6 +647,40 @@ export class KioskManager {
 
   static isInKioskMode(): boolean {
     return this.isKioskMode || localStorage.getItem("kioskModeActive") === "true"
+  }
+
+  private static setupFullscreenListener(): void {
+    this.fullscreenChangeHandler = () => {
+      const isFullscreen = !!(
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).msFullscreenElement ||
+        (document as any).mozFullScreenElement
+      )
+
+      if (!isFullscreen && this.isKioskMode) {
+        console.log("🔄 Fullscreen exited unexpectedly, re-entering...")
+        // Re-enter fullscreen if it was exited unexpectedly
+        setTimeout(() => {
+          this.enterKioskMode()
+        }, 1000)
+      }
+    }
+
+    document.addEventListener("fullscreenchange", this.fullscreenChangeHandler)
+    document.addEventListener("webkitfullscreenchange", this.fullscreenChangeHandler)
+    document.addEventListener("msfullscreenchange", this.fullscreenChangeHandler)
+    document.addEventListener("mozfullscreenchange", this.fullscreenChangeHandler)
+  }
+
+  private static removeFullscreenListener(): void {
+    if (this.fullscreenChangeHandler) {
+      document.removeEventListener("fullscreenchange", this.fullscreenChangeHandler)
+      document.removeEventListener("webkitfullscreenchange", this.fullscreenChangeHandler)
+      document.removeEventListener("msfullscreenchange", this.fullscreenChangeHandler)
+      document.removeEventListener("mozfullscreenchange", this.fullscreenChangeHandler)
+      this.fullscreenChangeHandler = null
+    }
   }
 
   private static setupCursorHiding(): void {
@@ -489,11 +740,14 @@ export class KioskManager {
         { ctrl: true, key: "T" },
         { ctrl: true, key: "n" }, // Ctrl+N (new window)
         { ctrl: true, key: "N" },
-        { ctrl: true, key: "shift", key2: "I" }, // Ctrl+Shift+I (dev tools)
-        { ctrl: true, key: "shift", key2: "J" }, // Ctrl+Shift+J (console)
+        { ctrl: true, shift: true, key: "I" }, // Ctrl+Shift+I (dev tools)
+        { ctrl: true, shift: true, key: "J" }, // Ctrl+Shift+J (console)
         { ctrl: true, key: "u" }, // Ctrl+U (view source)
         { ctrl: true, key: "U" },
         { alt: true, key: "Tab" }, // Alt+Tab
+        { ctrl: true, key: "+" }, // Ctrl++ (zoom in)
+        { ctrl: true, key: "-" }, // Ctrl+- (zoom out)
+        { ctrl: true, key: "0" }, // Ctrl+0 (reset zoom)
       ]
 
       // Check single keys
@@ -506,16 +760,14 @@ export class KioskManager {
 
       // Check key combinations
       for (const combo of blockedCombinations) {
-        if (
-          combo.ctrl &&
-          e.ctrlKey &&
-          combo.alt &&
-          e.altKey &&
-          combo.shift &&
-          e.shiftKey &&
-          (e.key.toLowerCase() === combo.key.toLowerCase() ||
-            (combo.key2 && e.key.toLowerCase() === combo.key2.toLowerCase()))
-        ) {
+        let matches = true
+
+        if (combo.ctrl && !e.ctrlKey) matches = false
+        if (combo.alt && !e.altKey) matches = false
+        if (combo.shift && !e.shiftKey) matches = false
+        if (combo.key && e.key.toLowerCase() !== combo.key.toLowerCase()) matches = false
+
+        if (matches) {
           console.log(`🚫 Blocked combination: ${JSON.stringify(combo)}`)
           e.preventDefault()
           e.stopPropagation()
@@ -552,6 +804,39 @@ export class KioskManager {
     document.head.appendChild(style)
   }
 
+  private static preventZoom(): void {
+    const style = document.createElement("style")
+    style.id = "kiosk-zoom-prevent"
+    style.textContent = `
+      body { 
+        touch-action: pan-x pan-y !important;
+        user-zoom: fixed !important;
+        -webkit-user-select: none !important;
+        -moz-user-select: none !important;
+        -ms-user-select: none !important;
+        user-select: none !important;
+      }
+    `
+    document.head.appendChild(style)
+
+    // Prevent pinch zoom
+    document.addEventListener("gesturestart", (e) => e.preventDefault())
+    document.addEventListener("gesturechange", (e) => e.preventDefault())
+    document.addEventListener("gestureend", (e) => e.preventDefault())
+  }
+
+  private static lockOrientation(): void {
+    try {
+      if (screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock("landscape").catch((error) => {
+          console.warn("Could not lock orientation:", error)
+        })
+      }
+    } catch (error) {
+      console.warn("Orientation lock not supported:", error)
+    }
+  }
+
   private static enableExitShortcuts(): void {
     console.log("✅ Re-enabling exit shortcuts...")
 
@@ -570,6 +855,23 @@ export class KioskManager {
     const style = document.getElementById("kiosk-scrollbar-hide")
     if (style) {
       style.remove()
+    }
+  }
+
+  private static enableZoom(): void {
+    const style = document.getElementById("kiosk-zoom-prevent")
+    if (style) {
+      style.remove()
+    }
+  }
+
+  private static unlockOrientation(): void {
+    try {
+      if (screen.orientation && screen.orientation.unlock) {
+        screen.orientation.unlock()
+      }
+    } catch (error) {
+      console.warn("Could not unlock orientation:", error)
     }
   }
 
@@ -602,6 +904,8 @@ export class KioskManager {
       this.disableExitShortcuts()
       this.disableContextMenu()
       this.hideScrollbars()
+      this.preventZoom()
+      this.lockOrientation()
     }
   }
 }

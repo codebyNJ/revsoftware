@@ -35,7 +35,7 @@ export default function DisplayPage() {
   }
 
   const goToSuperPage = () => {
-    router.push("/super")
+    router.push("/")
   }
 
   // Format phone number as user types
@@ -256,9 +256,24 @@ export default function DisplayPage() {
       } catch (error) {
         addDebugInfo(`⚠️ Display update failed: ${error.message}`)
       }
+
+      // Step 6: Ensure display status remains consistent
+      try {
+        await updateDoc(doc(db, "displays", displayDoc.id), {
+          status: "active", // Explicitly set to active
+          isOnline: true,
+          lastSeen: serverTimestamp(),
+          currentDriverId: driverDoc.id,
+          currentDriverName: driverData.name,
+          updatedAt: serverTimestamp(),
+        })
+        addDebugInfo("✅ Display status set to active")
+      } catch (error) {
+        addDebugInfo(`⚠️ Display status update failed: ${error.message}`)
+      }
       setAuthStep("Saving session")
 
-      // Step 6: Store session information
+      // Step 7: Store session information
       localStorage.setItem("displayId", displayDoc.id)
       localStorage.setItem("displayName", displayData.name || "Display")
       localStorage.setItem("driverId", driverDoc.id)
@@ -267,7 +282,7 @@ export default function DisplayPage() {
       addDebugInfo("✅ Session data stored locally")
       setAuthStep("Finalizing")
 
-      // Step 7: Update state to trigger redirect
+      // Step 8: Update state to trigger redirect
       addDebugInfo("Setting authentication state...")
 
       // Set all state synchronously
@@ -302,10 +317,23 @@ export default function DisplayPage() {
   const handleDisconnect = async () => {
     try {
       const sessionId = localStorage.getItem("sessionId")
+      const storedDisplayId = localStorage.getItem("displayId")
+
       if (sessionId) {
         await updateDoc(doc(db, "driver_sessions", sessionId), {
           isActive: false,
           endTime: serverTimestamp(),
+        })
+      }
+
+      // Set display to inactive when disconnecting
+      if (storedDisplayId) {
+        await updateDoc(doc(db, "displays", storedDisplayId), {
+          status: "inactive",
+          isOnline: false,
+          currentDriverId: null,
+          currentDriverName: null,
+          lastSeen: serverTimestamp(),
         })
       }
     } catch (error) {
@@ -343,9 +371,9 @@ export default function DisplayPage() {
   useEffect(() => {
     const initializeDeviceFeatures = async () => {
       try {
-        // Initialize device monitoring
+        // Initialize device monitoring with display and driver IDs
         const monitor = DeviceMonitor.getInstance()
-        await monitor.initialize()
+        await monitor.initialize(displayId || undefined, driverId || undefined)
 
         // Auto-enter kiosk mode after successful authentication
         if (isAuthenticated && displayId && driverId) {
@@ -398,12 +426,12 @@ export default function DisplayPage() {
         <div className="w-full h-full relative">
           <VideoDisplay displayId={displayId} driverId={driverId} />
         </div>
-        
+
         {/* Floating disconnect button with better positioning */}
         <div className="fixed top-4 right-4 z-[9999] opacity-0 hover:opacity-100 focus-within:opacity-100 transition-opacity duration-300">
-          <Button 
-            variant="destructive" 
-            size="sm" 
+          <Button
+            variant="destructive"
+            size="sm"
             onClick={handleDisconnect}
             className="shadow-lg backdrop-blur-sm bg-red-600/90 hover:bg-red-700 text-white border border-red-500"
           >
@@ -412,7 +440,7 @@ export default function DisplayPage() {
         </div>
 
         {/* Debug info overlay (hidden by default, can be toggled) */}
-        {process.env.NODE_ENV === 'development' && (
+        {process.env.NODE_ENV === "development" && (
           <div className="fixed bottom-4 left-4 z-[9998] max-w-sm opacity-0 hover:opacity-100 transition-opacity duration-300">
             <div className="bg-black/80 text-white text-xs p-2 rounded backdrop-blur-sm">
               <p>Display: {displayId}</p>
@@ -489,7 +517,7 @@ export default function DisplayPage() {
 
             <Button type="button" variant="outline" className="w-full" onClick={goToSuperPage} disabled={loading}>
               <Home className="w-4 h-4 mr-2" />
-              Go to Super Page
+              Go to Super Admin
             </Button>
           </form>
 
@@ -501,20 +529,12 @@ export default function DisplayPage() {
                 <span className="text-sm font-medium text-gray-800">Debug Log</span>
               </div>
               {debugInfo.map((info, index) => (
-                <p key={index} className="text-xs text-gray-700 mb-1 font-mono">
+                <p key={index} className="text-xs text-gray-600 mb-1 font-mono">
                   {info}
                 </p>
               ))}
             </div>
           )}
-
-          {/* Current State Display */}
-          <div className="mt-4 p-2 bg-yellow-50 border border-yellow-200 rounded">
-            <p className="text-xs text-yellow-800">
-              <strong>State:</strong> Auth={isAuthenticated.toString()}, Display={!!displayId}, Driver={!!driverId},
-              Loading={loading.toString()}
-            </p>
-          </div>
         </CardContent>
       </Card>
     </div>

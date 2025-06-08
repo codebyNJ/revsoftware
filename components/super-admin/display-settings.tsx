@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/hooks/use-auth"
 import { Settings, Save } from "lucide-react"
+import { PingTest } from "./ping-test"
 
 export function DisplaySettingsManager() {
   const { user } = useAuth()
@@ -154,6 +155,8 @@ export function DisplaySettingsManager() {
           </Button>
         </CardContent>
       </Card>
+
+      <PingTest />
     </div>
   )
 }

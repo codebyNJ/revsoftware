@@ -10,6 +10,8 @@ import { DataStorageService } from "@/lib/data-storage"
 import { Newspaper, ExternalLink, Search, Eye, EyeOff, Calendar, Globe, Trash2 } from "lucide-react"
 import type { NewsItem } from "@/lib/api-services"
 import { useToast } from "@/hooks/use-toast"
+import { deleteDoc, doc } from "firebase/firestore"
+import { db } from "@/lib/firebase"
 
 export function NewsManagement() {
   const [news, setNews] = useState<(NewsItem & { createdAt: Date; isActive: boolean })[]>([])
@@ -74,15 +76,14 @@ export function NewsManagement() {
     setDeletingItems((prev) => [...prev, newsId])
     try {
       console.log(`Attempting to delete news item: ${newsId}`)
-      await dataStorage.deleteNews(newsId)
+
+      // Use Firebase deleteDoc directly
+      await deleteDoc(doc(db, "news", newsId))
       console.log(`Successfully deleted news item: ${newsId}`)
 
       // Remove from local state immediately for better UX
       setNews((prev) => prev.filter((item) => item.id !== newsId))
       setSelectedNews((prev) => prev.filter((id) => id !== newsId))
-
-      // Reload to ensure consistency
-      await loadNews()
 
       toast({
         title: "News Deleted",
@@ -92,7 +93,7 @@ export function NewsManagement() {
       console.error("Error deleting news:", error)
       toast({
         title: "Delete Failed",
-        description: `Failed to delete news item: ${error.message}`,
+        description: `Failed to delete news items: ${error?.message || "Unknown error"}`,
         variant: "destructive",
       })
     } finally {
@@ -109,15 +110,16 @@ export function NewsManagement() {
 
     try {
       console.log(`Attempting to bulk delete ${selectedNews.length} news items`)
-      await dataStorage.bulkDeleteNews(selectedNews)
+
+      // Use Firebase deleteDoc directly for each item
+      const deleteBatch = selectedNews.map((id) => deleteDoc(doc(db, "news", id)))
+      await Promise.all(deleteBatch)
+
       console.log(`Successfully bulk deleted ${selectedNews.length} news items`)
 
       // Remove from local state immediately
       setNews((prev) => prev.filter((item) => !selectedNews.includes(item.id)))
       setSelectedNews([])
-
-      // Reload to ensure consistency
-      await loadNews()
 
       toast({
         title: "News Deleted",
@@ -127,7 +129,7 @@ export function NewsManagement() {
       console.error("Error bulk deleting news:", error)
       toast({
         title: "Delete Failed",
-        description: `Failed to delete news items: ${error.message}`,
+        description: `Failed to delete news items: ${error?.message || "Unknown error"}`,
         variant: "destructive",
       })
     }

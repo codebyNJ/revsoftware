@@ -78,6 +78,7 @@ export function DisplayManagement() {
         location: formData.location,
         status: formData.status,
         pin: formData.pin,
+        isOnline: formData.status === "active",
         createdBy: user.id,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -89,6 +90,7 @@ export function DisplayManagement() {
           location: formData.location,
           status: formData.status,
           pin: formData.pin,
+          isOnline: formData.status === "active",
           updatedAt: serverTimestamp(),
           updatedBy: user.id,
         })
